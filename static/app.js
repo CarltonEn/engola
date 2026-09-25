@@ -44,9 +44,60 @@ async function loadEngines() {
 function addMessage(role, text, engineTag) {
   const wrap = el("div", `msg ${role}`, text);
   if (engineTag) wrap.appendChild(el("span", "engine-tag", engineTag));
+  if (role === "assistant") {
+    const btn = el("button", "speak-btn", "🔊 Speak");
+    btn.addEventListener("click", () => speak(text, btn));
+    wrap.appendChild(document.createElement("br"));
+    wrap.appendChild(btn);
+  }
   $("#messages").appendChild(wrap);
   $("#messages").scrollTop = $("#messages").scrollHeight;
   return wrap;
+}
+
+async function speak(text, btn) {
+  btn.classList.add("loading");
+  btn.textContent = "…";
+  try {
+    const res = await fetch("/api/speak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "speak failed");
+    const blob = await res.blob();
+    const player = $("#player");
+    player.src = URL.createObjectURL(blob);
+    player.hidden = false;
+    player.play();
+  } catch (err) {
+    alert("Speak failed: " + err.message);
+  } finally {
+    btn.classList.remove("loading");
+    btn.textContent = "🔊 Speak";
+  }
+}
+
+// ---------------------------------------------------------------- status
+async function loadStatus() {
+  const strip = $("#statusStrip");
+  try {
+    const s = await api("/api/status");
+    const items = [
+      ["Brave", s.brave_search],
+      ["ElevenLabs", s.elevenlabs],
+      ["Telegram archive", s.telegram_archive],
+      ["Gmail", s.gmail.linked ? true : (s.gmail.configured ? "unlinked" : false)],
+    ];
+    strip.innerHTML = "";
+    items.forEach(([label, state]) => {
+      const span = el("span", state === true ? "on" : "");
+      span.innerHTML = `<span class="dot"></span>${label}${state === "unlinked" ? " (not linked)" : ""}`;
+      strip.appendChild(span);
+    });
+  } catch {
+    strip.textContent = "status unavailable";
+  }
 }
 
 $("#chatForm").addEventListener("submit", async (e) => {
@@ -237,6 +288,7 @@ $("#rememberForm").addEventListener("submit", async (e) => {
 
 // ----------------------------------------------------------------- boot
 loadEngines();
+loadStatus();
 loadMail();
 loadNotes();
 if (new URLSearchParams(location.search).get("gmail_linked")) {

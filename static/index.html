@@ -13,6 +13,8 @@
   <select id="engineSelect" class="engine-select" aria-label="Chat engine"></select>
 </header>
 
+<div id="statusStrip" class="status-strip"></div>
+
 <nav class="tabs" id="tabs">
   <button class="tab active" data-tab="chat">Chat</button>
   <button class="tab" data-tab="device">Device</button>
@@ -25,6 +27,7 @@
   <!-- ---------------------------------------------------------- CHAT -->
   <section id="panel-chat" class="panel active">
     <div id="messages" class="messages"></div>
+    <audio id="player" hidden></audio>
     <form id="chatForm" class="composer">
       <input id="chatInput" type="text" placeholder="Message Engola" autocomplete="off" />
       <button type="submit" class="send">Send</button>

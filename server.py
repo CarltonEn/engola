@@ -51,6 +51,18 @@ def api_engines():
     return jsonify({"engines": registry.available(), "default": registry.default_engine()})
 
 
+@app.route("/api/status")
+def api_status():
+    """One place to check what's actually live -- doesn't leak key values,
+    just whether each integration has what it needs."""
+    return jsonify({
+        "brave_search": brave.configured(),
+        "elevenlabs": elevenlabs.configured(),
+        "telegram_archive": archive.telegram.configured(),
+        "gmail": {"configured": google_oauth.configured(), "linked": google_oauth.linked()},
+    })
+
+
 @app.route("/api/chat", methods=["POST"])
 def api_chat():
     body = request.get_json(force=True) or {}
