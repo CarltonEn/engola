@@ -44,12 +44,12 @@ def respond(history: list[dict], user_text: str, extra_context: str = "", allow_
     ] + _contents_from_history(history, user_text, extra_context)
 
     payload = {"contents": contents, "generationConfig": {"temperature": 0.6, "maxOutputTokens": 1500}}
-    url = f"{BASE}/models/{config.GEMINI_MODEL}:generateContent?key={config.GEMINI_API_KEY}"
-    r = requests.post(url, json=payload, timeout=45)
+    url = f"{BASE}/models/{config.GEMINI_MODEL}:generateContent"
+    r = requests.post(url, json=payload, headers={"x-goog-api-key": config.GEMINI_API_KEY}, timeout=45)
     if r.status_code == 404:
         raise RuntimeError(
             f"Gemini model '{config.GEMINI_MODEL}' not found for this key. Google rotates model "
-            f"IDs -- check GET {BASE}/models?key=... for valid names and update GEMINI_MODEL."
+            f"IDs -- check GET {BASE}/models with header x-goog-api-key for valid names and update GEMINI_MODEL."
         )
     r.raise_for_status()
     data = r.json()
@@ -79,9 +79,9 @@ def embed(text: str) -> list[float]:
     text = (text or "").strip()[:8000]
     if not text:
         return []
-    url = f"{BASE}/models/{config.GEMINI_EMBED_MODEL}:embedContent?key={config.GEMINI_API_KEY}"
+    url = f"{BASE}/models/{config.GEMINI_EMBED_MODEL}:embedContent"
     payload = {"content": {"parts": [{"text": text}]}}
-    r = requests.post(url, json=payload, timeout=20)
+    r = requests.post(url, json=payload, headers={"x-goog-api-key": config.GEMINI_API_KEY}, timeout=20)
     r.raise_for_status()
     return r.json().get("embedding", {}).get("values", [])
 
@@ -101,8 +101,8 @@ def describe_image(image_bytes: bytes, prompt: str = "Describe what's on this sc
         }],
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1000},
     }
-    url = f"{BASE}/models/{config.GEMINI_MODEL}:generateContent?key={config.GEMINI_API_KEY}"
-    r = requests.post(url, json=payload, timeout=45)
+    url = f"{BASE}/models/{config.GEMINI_MODEL}:generateContent"
+    r = requests.post(url, json=payload, headers={"x-goog-api-key": config.GEMINI_API_KEY}, timeout=45)
     r.raise_for_status()
     parts = r.json().get("candidates", [{}])[0].get("content", {}).get("parts", [])
     return "".join(p.get("text", "") for p in parts).strip() or "(no description returned)"
