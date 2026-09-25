@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Engola</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="bar">
+  <span class="wordmark">engola<span class="cursor">_</span></span>
+  <select id="engineSelect" class="engine-select" aria-label="Chat engine"></select>
+</header>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-tab="chat">Chat</button>
+  <button class="tab" data-tab="device">Device</button>
+  <button class="tab" data-tab="mail">Mail</button>
+  <button class="tab" data-tab="memory">Memory</button>
+</nav>
+
+<main>
+
+  <!-- ---------------------------------------------------------- CHAT -->
+  <section id="panel-chat" class="panel active">
+    <div id="messages" class="messages"></div>
+    <form id="chatForm" class="composer">
+      <input id="chatInput" type="text" placeholder="Message Engola" autocomplete="off" />
+      <button type="submit" class="send">Send</button>
+    </form>
+  </section>
+
+  <!-- -------------------------------------------------------- DEVICE -->
+  <section id="panel-device" class="panel">
+    <h2>Quick actions</h2>
+    <div class="grid" id="deviceActions">
+      <button data-action="battery">Battery</button>
+      <button data-action="clipboard_get">Clipboard</button>
+      <button data-action="torch_on">Torch on</button>
+      <button data-action="torch_off">Torch off</button>
+      <button data-action="vibrate">Vibrate</button>
+      <button data-action="location">Location</button>
+      <button data-action="volume">Volume</button>
+      <button data-action="sms_list">Recent SMS</button>
+    </div>
+    <pre id="deviceOutput" class="output" aria-live="polite"></pre>
+
+    <h2>Screen</h2>
+    <div class="row">
+      <button id="readScreenBtn">Read screen</button>
+      <button id="viewScreenBtn">View screenshot</button>
+    </div>
+    <img id="screenImg" class="screenshot" hidden alt="Current screenshot">
+    <pre id="screenOutput" class="output" aria-live="polite"></pre>
+
+    <h2>Shell</h2>
+    <form id="shellForm" class="composer">
+      <input id="shellInput" type="text" placeholder="command" autocomplete="off" spellcheck="false" />
+      <button type="submit" class="send">Run</button>
+    </form>
+    <pre id="shellOutput" class="output"></pre>
+  </section>
+
+  <!-- ---------------------------------------------------------- MAIL -->
+  <section id="panel-mail" class="panel">
+    <div id="mailLinked">
+      <div class="row">
+        <button id="refreshMail">Refresh inbox</button>
+        <button id="composeBtn">Compose</button>
+      </div>
+      <ul id="mailList" class="mail-list"></ul>
+    </div>
+    <div id="mailUnlinked" hidden>
+      <p class="muted">Gmail isn't linked yet.</p>
+      <a href="/oauth/google/start" class="send" style="display:inline-block;text-decoration:none;text-align:center;">Link Gmail</a>
+    </div>
+    <div id="composeForm" class="compose" hidden>
+      <input id="mailTo" type="email" placeholder="To">
+      <input id="mailSubject" type="text" placeholder="Subject">
+      <textarea id="mailBody" placeholder="Message" rows="6"></textarea>
+      <div class="row">
+        <button id="sendMailBtn">Send</button>
+        <button id="cancelMailBtn" class="ghost">Cancel</button>
+      </div>
+    </div>
+    <div id="mailReading" class="mail-reading" hidden></div>
+  </section>
+
+  <!-- -------------------------------------------------------- MEMORY -->
+  <section id="panel-memory" class="panel">
+    <form id="rememberForm" class="composer">
+      <input id="rememberInput" type="text" placeholder="Remember something…" autocomplete="off" />
+      <button type="submit" class="send">Save</button>
+    </form>
+    <ul id="notesList" class="notes-list"></ul>
+  </section>
+
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>

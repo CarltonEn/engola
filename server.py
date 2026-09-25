@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+"""Engola v2 -- a local web app. Runs as one Python process in Termux and
+binds to 127.0.0.1 only: you open it in the phone's own browser, nothing
+outside the device can reach it. No server to host, no domain, no
+Telegram-as-UI -- Telegram (if configured) is now just an archive channel.
+
+SECURITY NOTE: this process can run arbitrary shell commands and send
+email as you. That's the point, but it means HOST must stay 127.0.0.1
+unless you add real auth -- see README before ever changing ENGOLA_HOST.
+"""
+from flask import Flask, jsonify, make_response, redirect, request, send_file, send_from_directory
+
+import config
+from device import screen, shell, termux_api
+from integrations import gmail, google_oauth
+from memory import archive, history, knowledge
+from providers import brave, elevenlabs, registry
+
+app = Flask(__name__, static_folder="static", static_url_path="")
+history.load()
+
+
+# ---------------------------------------------------------------- security
+@app.before_request
+def _check_access_token():
+    if not config.ACCESS_TOKEN:
+        return None
+    supplied = request.args.get("token") or request.cookies.get("engola_token") or request.headers.get("X-Engola-Token")
+    if supplied != config.ACCESS_TOKEN:
+        return jsonify({"error": "missing or bad token"}), 401
+    return None
+
+
+@app.after_request
+def _persist_token_cookie(resp):
+    token = request.args.get("token")
+    if config.ACCESS_TOKEN and token == config.ACCESS_TOKEN:
+        resp.set_cookie("engola_token", token, httponly=True, samesite="Lax")
+    return resp
+
+
+# -------------------------------------------------------------------- UI
+@app.route("/")
+def index():
+    return send_from_directory("static", "index.html")
+
+
+# ------------------------------------------------------------------ chat
+@app.route("/api/engines")
+def api_engines():
+    return jsonify({"engines": registry.available(), "default": registry.default_engine()})
+
+
+@app.route("/api/chat", methods=["POST"])
+def api_chat():
+    body = request.get_json(force=True) or {}
+    text = (body.get("message") or "").strip()
+    engine = body.get("engine") or registry.default_engine()
+    if not text:
+        return jsonify({"error": "empty message"}), 400
+
+    hist = history.get()
+    mem_context = knowledge.context_for(text)
+
+    try:
+        reply = registry.respond(engine, hist, text, extra_context=mem_context, allow_search_request=brave.configured())
+        query = registry.wants_search(engine, reply)
+        if query:
+            try:
+                results = brave.search(query, count=5)
+                search_block = brave.as_context_block(results)
+                combined = f"{mem_context}\n\n{search_block}" if mem_context else search_block
+                reply = registry.respond(engine, hist, text, extra_context=combined)
+            except Exception:
+                reply = registry.respond(engine, hist, text, extra_context=mem_context)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+
+    history.add("user", text)
+    history.add("assistant", reply)
+    knowledge.log_turn(text, reply)
+    archive.log_turn(text, reply, engine=engine)
+    return jsonify({"reply": reply, "engine": engine})
+
+
+@app.route("/api/history", methods=["DELETE"])
+def api_history_clear():
+    history.clear()
+    return jsonify({"ok": True})
+
+
+# --------------------------------------------------------------- search
+@app.route("/api/search")
+def api_search():
+    q = request.args.get("q", "")
+    try:
+        return jsonify({"results": brave.search(q, count=8)})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+
+
+# ---------------------------------------------------------------- speak
+@app.route("/api/speak", methods=["POST"])
+def api_speak():
+    body = request.get_json(force=True) or {}
+    text = (body.get("text") or "").strip()
+    try:
+        audio = elevenlabs.synthesize(text)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+    path = config.DATA_DIR / "speak.mp3"
+    path.write_bytes(audio)
+    return send_file(path, mimetype="audio/mpeg")
+
+
+# ------------------------------------------------------------- knowledge
+@app.route("/api/knowledge", methods=["GET"])
+def api_knowledge_list():
+    return jsonify({"notes": knowledge.all_notes()})
+
+
+@app.route("/api/knowledge", methods=["POST"])
+def api_knowledge_add():
+    body = request.get_json(force=True) or {}
+    fact = (body.get("text") or "").strip()
+    if not fact:
+        return jsonify({"error": "empty text"}), 400
+    note_id = knowledge.remember(fact)
+    archive.log_event(f"remembered: {fact}")
+    return jsonify({"id": note_id})
+
+
+@app.route("/api/knowledge/<int:note_id>", methods=["DELETE"])
+def api_knowledge_delete(note_id):
+    knowledge.delete(note_id)
+    return jsonify({"ok": True})
+
+
+# ---------------------------------------------------------------- device
+@app.route("/api/device/shell", methods=["POST"])
+def api_device_shell():
+    body = request.get_json(force=True) or {}
+    command = (body.get("command") or "").strip()
+    force = bool(body.get("force"))
+    if not command:
+        return jsonify({"error": "empty command"}), 400
+    if shell.is_dangerous(command) and not force:
+        return jsonify({"error": "dangerous command", "requires_force": True}), 409
+    result = shell.run(command)
+    archive.log_event(f"shell: `{command}` -> exit {result['exit_code']}")
+    return jsonify(result)
+
+
+@app.route("/api/device/action", methods=["POST"])
+def api_device_action():
+    body = request.get_json(force=True) or {}
+    action = (body.get("action") or "").strip()
+    args = body.get("args") or {}
+    try:
+        if action == "clipboard_set":
+            out = termux_api.clipboard_set(args.get("text", ""))
+        elif action == "notify":
+            out = termux_api.notify(args.get("title", "Engola"), args.get("body", ""))
+        elif action == "sms_send":
+            out = termux_api.sms_send(args.get("number", ""), args.get("text", ""))
+        elif action == "photo":
+            out = termux_api.camera_photo(str(config.DATA_DIR / "photo.jpg"))
+        else:
+            out = termux_api.run_action(action)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+    return jsonify({"result": out})
+
+
+@app.route("/api/device/screen", methods=["GET"])
+def api_device_screen():
+    try:
+        description = screen.read_screen()
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+    return jsonify({"description": description})
+
+
+@app.route("/api/device/screen/image", methods=["GET"])
+def api_device_screen_image():
+    try:
+        screen.screenshot()
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+    return send_file(screen.SCREENSHOT_PATH, mimetype="image/png")
+
+
+@app.route("/api/device/input", methods=["POST"])
+def api_device_input():
+    body = request.get_json(force=True) or {}
+    kind = body.get("type")
+    try:
+        if kind == "tap":
+            out = screen.tap(int(body["x"]), int(body["y"]))
+        elif kind == "swipe":
+            out = screen.swipe(int(body["x1"]), int(body["y1"]), int(body["x2"]), int(body["y2"]))
+        elif kind == "text":
+            out = screen.type_text(body.get("text", ""))
+        elif kind == "key":
+            out = screen.tap_key(body.get("keyevent", "KEYCODE_BACK"))
+        else:
+            return jsonify({"error": f"unknown input type '{kind}'"}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+    return jsonify({"result": out})
+
+
+# ----------------------------------------------------------------- email
+@app.route("/oauth/google/start")
+def oauth_google_start():
+    return redirect(google_oauth.authorization_url())
+
+
+@app.route("/oauth/google/callback")
+def oauth_google_callback():
+    code = request.args.get("code")
+    if not code:
+        return "Missing ?code -- Google didn't grant authorization.", 400
+    google_oauth.exchange_code(code)
+    return redirect("/?gmail_linked=1")
+
+
+@app.route("/api/email/status")
+def api_email_status():
+    return jsonify({"linked": google_oauth.linked(), "configured": google_oauth.configured()})
+
+
+@app.route("/api/email/list")
+def api_email_list():
+    try:
+        return jsonify({"messages": gmail.list_recent(request.args.get("q", ""), int(request.args.get("max", 10)))})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+
+
+@app.route("/api/email/<message_id>")
+def api_email_read(message_id):
+    try:
+        return jsonify(gmail.read(message_id))
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+
+
+@app.route("/api/email/send", methods=["POST"])
+def api_email_send():
+    body = request.get_json(force=True) or {}
+    try:
+        result = gmail.send(body.get("to", ""), body.get("subject", ""), body.get("body", ""))
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 502
+    archive.log_event(f"email sent to {body.get('to')}: {body.get('subject')}")
+    return jsonify(result)
+
+
+if __name__ == "__main__":
+    print(f"Engola running for {config.OWNER_NAME} at http://{config.HOST}:{config.PORT}  (Ctrl+C to stop)")
+    if config.HOST not in ("127.0.0.1", "localhost"):
+        print("WARNING: ENGOLA_HOST is not 127.0.0.1 -- this exposes shell/email/device control to your network.")
+    app.run(host=config.HOST, port=config.PORT, debug=False)
