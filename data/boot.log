@@ -1,0 +1,62 @@
+Engola running for Carlton at http://127.0.0.1:8765  (Ctrl+C to stop)
+ * Serving Flask app 'server'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:8765
+[33mPress CTRL+C to quit[0m
+127.0.0.1 - - [27/Sep/2026 03:08:37] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+127.0.0.1 - - [27/Sep/2026 03:08:39] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [27/Sep/2026 03:08:39] "[36mGET /style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [27/Sep/2026 03:08:39] "[36mGET /app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [27/Sep/2026 03:08:39] "GET /api/engines HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:08:39] "GET /api/email/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:08:39] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:08:39] "GET /api/knowledge HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:08:40] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [27/Sep/2026 03:08:40] "[36mGET /style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [27/Sep/2026 03:08:40] "[36mGET /app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [27/Sep/2026 03:08:40] "GET /api/engines HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:08:40] "GET /api/email/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:08:40] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:08:41] "GET /api/knowledge HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:08:45] "GET /api/email/list HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:08:47] "GET /api/email/list HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:08:48] "GET /api/email/list HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:10:18] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [27/Sep/2026 03:10:18] "[36mGET /style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [27/Sep/2026 03:10:18] "[36mGET /app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [27/Sep/2026 03:10:18] "GET /api/engines HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:10:18] "GET /api/email/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:10:18] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:10:18] "GET /api/knowledge HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:10:21] "[36mGET / HTTP/1.1[0m" 304 -
+127.0.0.1 - - [27/Sep/2026 03:10:21] "[36mGET /style.css HTTP/1.1[0m" 304 -
+127.0.0.1 - - [27/Sep/2026 03:10:21] "[36mGET /app.js HTTP/1.1[0m" 304 -
+127.0.0.1 - - [27/Sep/2026 03:10:21] "GET /api/engines HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:10:21] "GET /api/email/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:10:21] "GET /api/status HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:10:21] "GET /api/knowledge HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:10:27] "GET /api/email/list HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:10:31] "GET /api/email/list HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:11:46] "POST /api/chat HTTP/1.1" 200 -
+127.0.0.1 - - [27/Sep/2026 03:11:48] "[35m[1mPOST /api/speak HTTP/1.1[0m" 502 -
+Terminated                 python server.py
+Engola running for Carlton at http://127.0.0.1:8765  (Ctrl+C to stop)
+ * Serving Flask app 'server'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:8765
+[33mPress CTRL+C to quit[0m
+Terminated                 python server.py
+Engola running for Carlton at http://127.0.0.1:8765  (Ctrl+C to stop)
+ * Serving Flask app 'server'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:8765
+[33mPress CTRL+C to quit[0m
+Engola running for Carlton at http://127.0.0.1:8765  (Ctrl+C to stop)
+ * Serving Flask app 'server'
+ * Debug mode: off
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:8765
+[33mPress CTRL+C to quit[0m

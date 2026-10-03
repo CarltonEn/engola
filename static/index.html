@@ -2,104 +2,168 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <title>Engola</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
 
-<header class="bar">
-  <span class="wordmark">engola<span class="cursor">_</span></span>
-  <select id="engineSelect" class="engine-select" aria-label="Chat engine"></select>
+<header class="topbar">
+  <span class="brand">ENGOLA</span>
+  <button id="statusPill" class="status-pill" data-state="ready">
+    <span class="core"><span class="core-dot"></span></span>
+    <span id="statusLabel">READY</span>
+  </button>
 </header>
 
-<div id="statusStrip" class="status-strip"></div>
+<main id="app">
 
-<nav class="tabs" id="tabs">
-  <button class="tab active" data-tab="chat">Chat</button>
-  <button class="tab" data-tab="device">Device</button>
-  <button class="tab" data-tab="mail">Mail</button>
-  <button class="tab" data-tab="memory">Memory</button>
-</nav>
-
-<main>
-
-  <!-- ---------------------------------------------------------- CHAT -->
+  <!-- ==================================================== CHAT -->
   <section id="panel-chat" class="panel active">
-    <div id="messages" class="messages"></div>
+    <div id="messages" class="messages">
+      <div class="empty-state">
+        <p>Ask Engola anything.</p>
+      </div>
+    </div>
+
+    <div id="dock" class="audio-dock" hidden>
+      <button id="dockPlayPause" class="dock-btn">▶</button>
+      <input id="dockSeek" type="range" min="0" max="100" value="0" class="dock-seek">
+      <span id="dockTime" class="dock-time">0:00</span>
+      <button id="dockClose" class="dock-btn dock-close">✕</button>
+    </div>
     <audio id="player" hidden></audio>
-    <form id="chatForm" class="composer">
-      <input id="chatInput" type="text" placeholder="Message Engola" autocomplete="off" />
-      <button type="submit" class="send">Send</button>
-    </form>
+
+    <div class="composer-wrap">
+      <button id="paletteBtn" class="composer-icon-btn" title="Command palette">⌘</button>
+      <form id="chatForm" class="composer">
+        <textarea id="chatInput" placeholder="Ask Engola anything…" autocomplete="off" rows="1"></textarea>
+        <button type="button" id="micCommand" class="composer-icon-btn mic" title="Speak">🎙</button>
+        <button type="submit" class="composer-icon-btn send" title="Send">↑</button>
+      </form>
+    </div>
   </section>
 
-  <!-- -------------------------------------------------------- DEVICE -->
-  <section id="panel-device" class="panel">
-    <h2>Quick actions</h2>
-    <div class="grid" id="deviceActions">
-      <button data-action="battery">Battery</button>
+  <!-- ================================================== COMMAND (device) -->
+  <section id="panel-command" class="panel">
+    <h1 class="section-title">Command</h1>
+
+    <div class="device-card">
+      <div class="device-row"><span>Battery</span><span id="deviceBattery" class="muted">—</span></div>
+      <button data-action="battery" class="ghost-btn small">Refresh</button>
+    </div>
+
+    <h2 class="group-title">Actions</h2>
+    <div class="action-grid" id="deviceActions">
       <button data-action="clipboard_get">Clipboard</button>
+      <button data-action="photo">Camera</button>
       <button data-action="torch_on">Torch on</button>
       <button data-action="torch_off">Torch off</button>
       <button data-action="vibrate">Vibrate</button>
       <button data-action="location">Location</button>
       <button data-action="volume">Volume</button>
-      <button data-action="sms_list">Recent SMS</button>
+      <button data-action="sms_list">SMS</button>
     </div>
     <pre id="deviceOutput" class="output" aria-live="polite"></pre>
 
-    <h2>Screen</h2>
+    <h2 class="group-title">Screen</h2>
     <div class="row">
-      <button id="readScreenBtn">Read screen</button>
-      <button id="viewScreenBtn">View screenshot</button>
+      <button id="readScreenBtn" class="ghost-btn">Read screen</button>
+      <button id="viewScreenBtn" class="ghost-btn">View screenshot</button>
     </div>
     <img id="screenImg" class="screenshot" hidden alt="Current screenshot">
     <pre id="screenOutput" class="output" aria-live="polite"></pre>
 
-    <h2>Shell</h2>
+    <h2 class="group-title privileged">Shell — privileged</h2>
     <form id="shellForm" class="composer">
       <input id="shellInput" type="text" placeholder="command" autocomplete="off" spellcheck="false" />
-      <button type="submit" class="send">Run</button>
+      <button type="submit" class="ghost-btn">Run</button>
     </form>
     <pre id="shellOutput" class="output"></pre>
   </section>
 
-  <!-- ---------------------------------------------------------- MAIL -->
+  <!-- ====================================================== MAIL -->
   <section id="panel-mail" class="panel">
+    <h1 class="section-title">Mail</h1>
     <div id="mailLinked">
       <div class="row">
-        <button id="refreshMail">Refresh inbox</button>
-        <button id="composeBtn">Compose</button>
+        <button id="refreshMail" class="ghost-btn">Refresh</button>
+        <button id="composeBtn" class="ghost-btn">Compose</button>
       </div>
       <ul id="mailList" class="mail-list"></ul>
     </div>
     <div id="mailUnlinked" hidden>
       <p class="muted">Gmail isn't linked yet.</p>
-      <a href="/oauth/google/start" class="send" style="display:inline-block;text-decoration:none;text-align:center;">Link Gmail</a>
+      <a href="/oauth/google/start" class="ghost-btn" style="display:inline-block;text-decoration:none;text-align:center;">Link Gmail</a>
     </div>
     <div id="composeForm" class="compose" hidden>
       <input id="mailTo" type="email" placeholder="To">
       <input id="mailSubject" type="text" placeholder="Subject">
       <textarea id="mailBody" placeholder="Message" rows="6"></textarea>
       <div class="row">
-        <button id="sendMailBtn">Send</button>
-        <button id="cancelMailBtn" class="ghost">Cancel</button>
+        <button id="sendMailBtn" class="ghost-btn">Send</button>
+        <button id="cancelMailBtn" class="ghost-btn">Cancel</button>
       </div>
     </div>
     <div id="mailReading" class="mail-reading" hidden></div>
   </section>
 
-  <!-- -------------------------------------------------------- MEMORY -->
+  <!-- ==================================================== MEMORY -->
   <section id="panel-memory" class="panel">
+    <h1 class="section-title">Memory</h1>
     <form id="rememberForm" class="composer">
       <input id="rememberInput" type="text" placeholder="Remember something…" autocomplete="off" />
-      <button type="submit" class="send">Save</button>
+      <button type="submit" class="ghost-btn">Save</button>
     </form>
     <ul id="notesList" class="notes-list"></ul>
   </section>
 
 </main>
+
+<!-- ==================================================== NAV -->
+<nav class="navrail" id="tabs">
+  <button class="tab active" data-tab="chat" title="Chat">💬</button>
+  <button class="tab" data-tab="command" title="Command">⌁</button>
+  <button class="tab" data-tab="mail" title="Mail">✉</button>
+  <button class="tab" data-tab="memory" title="Memory">◐</button>
+  <button class="tab" data-tab="systems" title="Systems">⚙</button>
+</nav>
+
+<!-- ================================================== SYSTEMS SHEET -->
+<div id="systemsSheet" class="sheet" hidden>
+  <div class="sheet-inner">
+    <h2 class="group-title">Engine</h2>
+    <select id="engineSelect" class="engine-select-full" aria-label="Chat engine"></select>
+
+    <h2 class="group-title">Voice</h2>
+    <div class="row">
+      <button id="voiceToggle" class="ghost-btn">Toggle auto-speak</button>
+      <span id="voiceState" class="muted"></span>
+    </div>
+    <button id="voiceToggleSettings" hidden></button>
+
+    <h2 class="group-title">Connections</h2>
+    <div id="statusStrip" class="status-strip"></div>
+
+    <button id="closeSheet" class="ghost-btn" style="margin-top:16px;">Close</button>
+  </div>
+</div>
+
+<!-- =============================================== COMMAND PALETTE -->
+<div id="palette" class="sheet" hidden>
+  <div class="sheet-inner palette-inner">
+    <p class="palette-prompt">What do you want Engola to do?</p>
+    <button class="palette-item" data-prompt="Search the web for ">› Search the web</button>
+    <button class="palette-item" data-prompt="Check my mail for ">› Check my mail</button>
+    <button class="palette-item" data-prompt="Run this on my device: ">› Control my device</button>
+    <button class="palette-item" data-prompt="Remember that ">› Remember something</button>
+    <button class="palette-item" data-prompt="Run the command ">› Run a command</button>
+    <button class="palette-item" data-prompt="Open ">› Open an application</button>
+    <button id="closePalette" class="ghost-btn" style="margin-top:12px;">Close</button>
+  </div>
+</div>
 
 <script src="/app.js"></script>
 </body>

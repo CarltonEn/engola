@@ -1,0 +1,722 @@
+=== static/app.js ===
+const $ = (sel) => document.querySelector(sel);
+const el = (tag, cls, text) => {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+};
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw Object.assign(new Error(data.error || res.statusText), { status: res.status, data });
+  return data;
+}
+
+// ------------------------------------------------------------------ tabs
+document.querySelectorAll(".tab").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".panel").forEach((p) => p.classList.remove("active"));
+    btn.classList.add("active");
+    $(`#panel-${btn.dataset.tab}`).classList.add("active");
+  });
+});
+
+// ----------------------------------------------------------------- chat
+let currentEngine = null;
+
+async function loadEngines() {
+  const { engines, default: def } = await api("/api/engines");
+  const sel = $("#engineSelect");
+  sel.innerHTML = "";
+  engines.forEach((e) => {
+    const opt = el("option");
+    opt.value = e.id;
+    opt.textContent = e.configured ? e.label : `${e.label} (no key)`;
+    opt.disabled = !e.configured;
+    sel.appendChild(opt);
+  });
+  currentEngine = def;
+  sel.value = def;
+  sel.addEventListener("change", () => (currentEngine = sel.value));
+}
+
+function addMessage(role, text, engineTag) {
+  const wrap = el("div", `msg ${role}`, text);
+  if (engineTag) wrap.appendChild(el("span", "engine-tag", engineTag));
+  if (role === "assistant") {
+    const btn = el("button", "speak-btn", "🔊 Speak");
+    btn.addEventListener("click", () => speak(text, btn));
+    wrap.appendChild(document.createElement("br"));
+    wrap.appendChild(btn);
+  }
+  $("#messages").appendChild(wrap);
+  $("#messages").scrollTop = $("#messages").scrollHeight;
+  return wrap;
+}
+
+async function speak(text, btn) {
+  btn.classList.add("loading");
+  btn.textContent = "…";
+  try {
+    const res = await fetch("/api/speak", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "speak failed");
+    const blob = await res.blob();
+    const player = $("#player");
+    player.src = URL.createObjectURL(blob);
+    player.hidden = false;
+    player.play();
+  } catch (err) {
+    alert("Speak failed: " + err.message);
+  } finally {
+    btn.classList.remove("loading");
+    btn.textContent = "🔊 Speak";
+  }
+}
+
+// ---------------------------------------------------------------- status
+async function loadStatus() {
+  const strip = $("#statusStrip");
+  try {
+    const s = await api("/api/status");
+    const items = [
+      ["Brave", s.brave_search],
+      ["ElevenLabs", s.elevenlabs],
+      ["Telegram archive", s.telegram_archive],
+      ["Gmail", s.gmail.linked ? true : (s.gmail.configured ? "unlinked" : false)],
+    ];
+    strip.innerHTML = "";
+    items.forEach(([label, state]) => {
+      const span = el("span", state === true ? "on" : "");
+      span.innerHTML = `<span class="dot"></span>${label}${state === "unlinked" ? " (not linked)" : ""}`;
+      strip.appendChild(span);
+    });
+  } catch {
+    strip.textContent = "status unavailable";
+  }
+}
+
+$("#chatForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = $("#chatInput");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  addMessage("user", text);
+  const pending = addMessage("assistant", "…");
+  try {
+    const { reply, engine } = await api("/api/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: text, engine: currentEngine }),
+    });
+    pending.textContent = reply;
+    pending.appendChild(el("span", "engine-tag", engine));
+  } catch (err) {
+    pending.className = "msg error";
+    pending.textContent = err.message;
+  }
+});
+
+// --------------------------------------------------------------- device
+$("#deviceActions").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-action]");
+  if (!btn) return;
+  const out = $("#deviceOutput");
+  out.textContent = "…";
+  try {
+    const { result } = await api("/api/device/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: btn.dataset.action }),
+    });
+    out.textContent = typeof result === "string" ? result : JSON.stringify(result, null, 2);
+  } catch (err) {
+    out.textContent = "Error: " + err.message;
+  }
+});
+
+$("#readScreenBtn").addEventListener("click", async () => {
+  const out = $("#screenOutput");
+  out.textContent = "Reading…";
+  try {
+    const { description } = await api("/api/device/screen");
+    out.textContent = description;
+  } catch (err) {
+    out.textContent = "Error: " + err.message;
+  }
+});
+
+$("#viewScreenBtn").addEventListener("click", () => {
+  const img = $("#screenImg");
+  img.src = "/api/device/screen/image?t=" + Date.now();
+  img.hidden = false;
+});
+
+$("#shellForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = $("#shellInput");
+  const command = input.value.trim();
+  if (!command) return;
+  const out = $("#shellOutput");
+  out.textContent = "Running…";
+  await runShell(command, false, out);
+});
+
+async function runShell(command, force, out) {
+  try {
+    const result = await api("/api/device/shell", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command, force }),
+    });
+    out.textContent = `exit ${result.exit_code}\n${result.stdout || ""}${result.stderr ? "\nstderr:\n" + result.stderr : ""}`;
+  } catch (err) {
+    if (err.status === 409) {
+      if (confirm(`"${command}" looks destructive. Run it anyway?`)) {
+        return runShell(command, true, out);
+      }
+      out.textContent = "Cancelled.";
+    } else {
+      out.textContent = "Error: " + err.message;
+    }
+  }
+}
+
+// ----------------------------------------------------------------- mail
+async function loadMail() {
+  const status = await api("/api/email/status");
+  $("#mailLinked").hidden = !status.linked;
+  $("#mailUnlinked").hidden = status.linked;
+  if (status.linked) await refreshMail();
+}
+
+async function refreshMail() {
+  const list = $("#mailList");
+  list.innerHTML = "<li>Loading…</li>";
+  try {
+    const { messages } = await api("/api/email/list");
+    list.innerHTML = "";
+    messages.forEach((m) => {
+      const li = el("li");
+      li.appendChild(el("div", "from", m.from));
+      li.appendChild(el("div", "subject", m.subject || "(no subject)"));
+      li.appendChild(el("div", "snippet", m.snippet));
+      li.addEventListener("click", () => readMail(m.id));
+      list.appendChild(li);
+    });
+  } catch (err) {
+    list.innerHTML = `<li>Error: ${err.message}</li>`;
+  }
+}
+
+async function readMail(id) {
+  const box = $("#mailReading");
+  box.hidden = false;
+  box.textContent = "Loading…";
+  try {
+    const m = await api("/api/email/" + id);
+    box.textContent = `From: ${m.from}\nSubject: ${m.subject}\nDate: ${m.date}\n\n${m.body}`;
+  } catch (err) {
+    box.textContent = "Error: " + err.message;
+  }
+}
+
+$("#refreshMail")?.addEventListener("click", refreshMail);
+$("#composeBtn").addEventListener("click", () => {
+  $("#composeForm").hidden = false;
+  $("#mailReading").hidden = true;
+});
+$("#cancelMailBtn").addEventListener("click", () => ($("#composeForm").hidden = true));
+$("#sendMailBtn").addEventListener("click", async () => {
+  try {
+    await api("/api/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: $("#mailTo").value.trim(),
+        subject: $("#mailSubject").value.trim(),
+        body: $("#mailBody").value,
+      }),
+    });
+    $("#composeForm").hidden = true;
+    $("#mailTo").value = $("#mailSubject").value = $("#mailBody").value = "";
+    refreshMail();
+  } catch (err) {
+    alert("Send failed: " + err.message);
+  }
+});
+
+// --------------------------------------------------------------- memory
+async function loadNotes() {
+  const { notes } = await api("/api/knowledge");
+  const list = $("#notesList");
+  list.innerHTML = "";
+  notes.forEach((n) => {
+    const li = el("li");
+    li.appendChild(el("span", "note-text", n.text));
+    const meta = el("span");
+    meta.appendChild(el("span", "note-date", n.created_at.slice(0, 10)));
+    const del = el("button", "del", "×");
+    del.addEventListener("click", async () => {
+      await api("/api/knowledge/" + n.id, { method: "DELETE" });
+      li.remove();
+    });
+    meta.appendChild(del);
+    li.appendChild(meta);
+    list.appendChild(li);
+  });
+}
+
+$("#rememberForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const input = $("#rememberInput");
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = "";
+  await api("/api/knowledge", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  loadNotes();
+});
+
+// ----------------------------------------------------------------- boot
+loadEngines();
+loadStatus();
+loadMail();
+loadNotes();
+if (new URLSearchParams(location.search).get("gmail_linked")) {
+  history.replaceState({}, "", "/");
+}
+
+
+=== static/index.html ===
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Engola</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="bar">
+  <span class="wordmark">engola<span class="cursor">_</span></span>
+  <select id="engineSelect" class="engine-select" aria-label="Chat engine"></select>
+</header>
+
+<div id="statusStrip" class="status-strip"></div>
+
+<nav class="tabs" id="tabs">
+  <button class="tab active" data-tab="chat">Chat</button>
+  <button class="tab" data-tab="device">Device</button>
+  <button class="tab" data-tab="mail">Mail</button>
+  <button class="tab" data-tab="memory">Memory</button>
+</nav>
+
+<main>
+
+  <!-- ---------------------------------------------------------- CHAT -->
+  <section id="panel-chat" class="panel active">
+    <div id="messages" class="messages"></div>
+    <audio id="player" hidden></audio>
+    <form id="chatForm" class="composer">
+      <input id="chatInput" type="text" placeholder="Message Engola" autocomplete="off" />
+      <button type="submit" class="send">Send</button>
+    </form>
+  </section>
+
+  <!-- -------------------------------------------------------- DEVICE -->
+  <section id="panel-device" class="panel">
+    <h2>Quick actions</h2>
+    <div class="grid" id="deviceActions">
+      <button data-action="battery">Battery</button>
+      <button data-action="clipboard_get">Clipboard</button>
+      <button data-action="torch_on">Torch on</button>
+      <button data-action="torch_off">Torch off</button>
+      <button data-action="vibrate">Vibrate</button>
+      <button data-action="location">Location</button>
+      <button data-action="volume">Volume</button>
+      <button data-action="sms_list">Recent SMS</button>
+    </div>
+    <pre id="deviceOutput" class="output" aria-live="polite"></pre>
+
+    <h2>Screen</h2>
+    <div class="row">
+      <button id="readScreenBtn">Read screen</button>
+      <button id="viewScreenBtn">View screenshot</button>
+    </div>
+    <img id="screenImg" class="screenshot" hidden alt="Current screenshot">
+    <pre id="screenOutput" class="output" aria-live="polite"></pre>
+
+    <h2>Shell</h2>
+    <form id="shellForm" class="composer">
+      <input id="shellInput" type="text" placeholder="command" autocomplete="off" spellcheck="false" />
+      <button type="submit" class="send">Run</button>
+    </form>
+    <pre id="shellOutput" class="output"></pre>
+  </section>
+
+  <!-- ---------------------------------------------------------- MAIL -->
+  <section id="panel-mail" class="panel">
+    <div id="mailLinked">
+      <div class="row">
+        <button id="refreshMail">Refresh inbox</button>
+        <button id="composeBtn">Compose</button>
+      </div>
+      <ul id="mailList" class="mail-list"></ul>
+    </div>
+    <div id="mailUnlinked" hidden>
+      <p class="muted">Gmail isn't linked yet.</p>
+      <a href="/oauth/google/start" class="send" style="display:inline-block;text-decoration:none;text-align:center;">Link Gmail</a>
+    </div>
+    <div id="composeForm" class="compose" hidden>
+      <input id="mailTo" type="email" placeholder="To">
+      <input id="mailSubject" type="text" placeholder="Subject">
+      <textarea id="mailBody" placeholder="Message" rows="6"></textarea>
+      <div class="row">
+        <button id="sendMailBtn">Send</button>
+        <button id="cancelMailBtn" class="ghost">Cancel</button>
+      </div>
+    </div>
+    <div id="mailReading" class="mail-reading" hidden></div>
+  </section>
+
+  <!-- -------------------------------------------------------- MEMORY -->
+  <section id="panel-memory" class="panel">
+    <form id="rememberForm" class="composer">
+      <input id="rememberInput" type="text" placeholder="Remember something…" autocomplete="off" />
+      <button type="submit" class="send">Save</button>
+    </form>
+    <ul id="notesList" class="notes-list"></ul>
+  </section>
+
+</main>
+
+<script src="/app.js"></script>
+</body>
+</html>
+
+
+=== device/termux_api.py ===
+"""Wraps the `termux-api` command-line tools (from the Termux:API app +
+`pkg install termux-api`) so Engola can actually touch the phone: battery,
+clipboard, notifications, vibration, torch, volume, location, SMS, camera.
+
+Each function shells out to one termux-api binary and returns plain text.
+If the Termux:API app/package isn't installed, every call fails with a
+clear message rather than hanging.
+"""
+import json
+import shlex
+import subprocess
+
+TIMEOUT = 20
+
+ACTIONS = {
+    "battery": "termux-battery-status",
+    "clipboard_get": "termux-clipboard-get",
+    "torch_on": "termux-torch on",
+    "torch_off": "termux-torch off",
+    "vibrate": "termux-vibrate -d 300",
+    "wifi": "termux-wifi-connectioninfo",
+    "location": "termux-location -p gps -r once",
+    "sms_list": "termux-sms-list -l 10",
+    "volume": "termux-volume",
+}
+
+
+def _run(cmd: str) -> str:
+    try:
+        proc = subprocess.run(shlex.split(cmd), capture_output=True, text=True, timeout=TIMEOUT)
+    except FileNotFoundError:
+        return (
+            "termux-api is not installed. On the phone: install the 'Termux:API' app "
+            "from F-Droid/Play Store, then run `pkg install termux-api`."
+        )
+    except subprocess.TimeoutExpired:
+        return f"{cmd} timed out after {TIMEOUT}s (check the Termux:API app has the needed permission)."
+    out = (proc.stdout or proc.stderr or "").strip()
+    return out or "(no output)"
+
+
+def run_action(name: str) -> str:
+    if name not in ACTIONS:
+        return f"Unknown device action '{name}'. Options: {', '.join(sorted(ACTIONS))}, clipboard_set, notify, share."
+    return _run(ACTIONS[name])
+
+
+def clipboard_set(text: str) -> str:
+    try:
+        subprocess.run(["termux-clipboard-set"], input=text, text=True, timeout=TIMEOUT)
+        return "Copied to clipboard."
+    except FileNotFoundError:
+        return "termux-api is not installed (see /device help)."
+
+
+def notify(title: str, content: str) -> str:
+    try:
+        subprocess.run(
+            ["termux-notification", "--title", title, "--content", content],
+            timeout=TIMEOUT,
+        )
+        return "Notification sent."
+    except FileNotFoundError:
+        return "termux-api is not installed (see /device help)."
+
+
+def sms_send(number: str, text: str) -> str:
+    try:
+        subprocess.run(["termux-sms-send", "-n", number, text], timeout=TIMEOUT)
+        return f"SMS sent to {number}."
+    except FileNotFoundError:
+        return "termux-api is not installed (see /device help)."
+
+
+def camera_photo(path: str) -> str:
+    try:
+        subprocess.run(["termux-camera-photo", "-c", "0", path], timeout=TIMEOUT)
+        return path
+    except FileNotFoundError:
+        return "termux-api is not installed (see /device help)."
+
+
+HELP = (
+    "Device actions: " + ", ".join(sorted(ACTIONS)) + ", clipboard_set <text>, "
+    "notify <title> | <text>, sms_send <number> <text>, photo\n"
+    "Requires the Termux:API app installed + `pkg install termux-api`."
+)
+
+
+=== device/screen.py ===
+"""'Read the screen' is not something a plain Termux shell can do on its
+own -- Android sandboxes apps from each other, and there's no termux-api
+command for it. The real, legitimate, no-root path is the same one
+Android's own developer tools use: pair Termux to the device's own ADB
+(Android Debug Bridge) over Wireless Debugging, which Google explicitly
+built for exactly this kind of on-device automation and testing.
+
+One-time setup on the phone (not automatable -- it's a deliberate consent
+step by design):
+  1. `pkg install android-tools` in Termux
+  2. Settings -> Developer options -> Wireless debugging -> ON
+  3. "Pair device with pairing code" -> note the IP:port and 6-digit code
+  4. `adb pair <ip>:<port>` in Termux, enter the code
+  5. `adb connect <ip>:<port>` (the regular debugging port, shown on the
+     same screen) -- after this, `adb devices` should list it as authorized
+
+This grants real control (screenshots AND simulated taps/typing), which is
+strictly more powerful than the other device/ modules -- treat pairing it
+as a deliberate, bigger trust decision than installing termux-api.
+"""
+import shlex
+import subprocess
+
+import config
+
+TIMEOUT = 20
+SCREENSHOT_PATH = str(config.DATA_DIR / "screen.png")
+
+
+def _adb(*args) -> subprocess.CompletedProcess:
+    return subprocess.run(["adb", *args], capture_output=True, timeout=TIMEOUT)
+
+
+def connected() -> bool:
+    try:
+        out = _adb("devices").stdout.decode()
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return False
+    lines = [l for l in out.splitlines()[1:] if l.strip()]
+    return any(l.endswith("device") for l in lines)  # excludes 'unauthorized'/'offline'
+
+
+def _require_connection():
+    if not connected():
+        raise RuntimeError(
+            "No authorized adb device. Run `adb devices` in Termux -- if it's empty or says "
+            "'unauthorized', redo the Wireless Debugging pairing (see device/screen.py docstring)."
+        )
+
+
+def screenshot() -> bytes:
+    _require_connection()
+    proc = subprocess.run(["adb", "exec-out", "screencap", "-p"], capture_output=True, timeout=TIMEOUT)
+    if not proc.stdout:
+        raise RuntimeError(f"Screenshot failed: {proc.stderr.decode()[:300]}")
+    with open(SCREENSHOT_PATH, "wb") as fh:
+        fh.write(proc.stdout)
+    return proc.stdout
+
+
+def read_screen() -> str:
+    """Screenshot + Gemini vision -> a text description of what's on screen,
+    including any readable text. This is the actual 'reads your screen'
+    feature -- OCR-via-vision-model, not a live accessibility feed."""
+    image = screenshot()
+    from providers import gemini
+    return gemini.describe_image(image)
+
+
+def tap(x: int, y: int) -> str:
+    _require_connection()
+    _adb("shell", "input", "tap", str(x), str(y))
+    return f"Tapped ({x}, {y})"
+
+
+def swipe(x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> str:
+    _require_connection()
+    _adb("shell", "input", "swipe", str(x1), str(y1), str(x2), str(y2), str(duration_ms))
+    return f"Swiped ({x1},{y1}) -> ({x2},{y2})"
+
+
+def type_text(text: str) -> str:
+    _require_connection()
+    # adb input text needs spaces escaped
+    _adb("shell", "input", "text", shlex.quote(text).replace(" ", "%s"))
+    return "Typed."
+
+
+def tap_key(keyevent: str) -> str:
+    """E.g. 'KEYCODE_BACK', 'KEYCODE_HOME', 'KEYCODE_ENTER'."""
+    _require_connection()
+    _adb("shell", "input", "keyevent", keyevent)
+    return f"Sent {keyevent}"
+
+
+=== device/shell.py ===
+"""Runs shell commands on the device Engola itself is running on.
+
+This is deliberately simple: the owner-ID check in bot.py is the real
+access control (only Telegram messages from OWNER_TELEGRAM_ID ever reach
+this module at all). The pattern check below is a second, much smaller
+safety net against fat-fingering an obviously destructive one-liner --
+not a sandbox, and not a substitute for keeping the bot token private.
+"""
+import re
+import subprocess
+
+import config
+
+MAX_OUTPUT = 3500
+
+
+def is_dangerous(command: str) -> bool:
+    return any(re.search(p, command, re.IGNORECASE) for p in config.DANGEROUS_PATTERNS)
+
+
+def run(command: str, timeout: int | None = None) -> dict:
+    timeout = min(timeout or config.MAX_SHELL_TIMEOUT, 600)
+    try:
+        proc = subprocess.run(
+            command, shell=True, capture_output=True, text=True, timeout=timeout,
+        )
+        return {
+            "exit_code": proc.returncode,
+            "stdout": proc.stdout[-MAX_OUTPUT:],
+            "stderr": proc.stderr[-MAX_OUTPUT:],
+        }
+    except subprocess.TimeoutExpired:
+        return {"exit_code": -1, "stdout": "", "stderr": f"Timed out after {timeout}s"}
+
+
+def format_result(result: dict) -> str:
+    parts = [f"exit code: {result['exit_code']}"]
+    if result["stdout"]:
+        parts.append(f"```\n{result['stdout']}\n```")
+    if result["stderr"]:
+        parts.append(f"stderr:\n```\n{result['stderr']}\n```")
+    return "\n".join(parts)
+
+
+=== config.py ===
+"""Central config. Everything comes from the environment (.env). No secret
+ever gets a hardcoded fallback -- an unset key means that feature reports
+itself as unconfigured instead of silently misbehaving."""
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+LOG_DIR = DATA_DIR / "transcripts"
+DB_PATH = DATA_DIR / "engola.db"
+TOKENS_PATH = DATA_DIR / "google_tokens.json"
+DATA_DIR.mkdir(exist_ok=True)
+LOG_DIR.mkdir(exist_ok=True)
+
+OWNER_NAME = os.getenv("ENGOLA_OWNER_NAME", "Carlton").strip()
+HOST = os.getenv("ENGOLA_HOST", "127.0.0.1").strip()
+PORT = int(os.getenv("ENGOLA_PORT", "8765"))
+# Optional extra lock on top of the 127.0.0.1 binding -- if set, every
+# request needs ?token=... once (then a cookie carries it). Recommended
+# once /api/device or /api/email are in play. Leave blank to disable.
+ACCESS_TOKEN = os.getenv("ENGOLA_ACCESS_TOKEN", "").strip()
+
+# --- Chat engines (all optional; UI only offers the ones actually configured) ---
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.0-flash").strip()
+GEMINI_EMBED_MODEL = os.getenv("GEMINI_EMBED_MODEL", "text-embedding-004").strip()
+
+XAI_API_KEY = os.getenv("XAI_API_KEY", "").strip()
+XAI_MODEL = os.getenv("XAI_MODEL", "grok-4").strip()
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1").strip()
+
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "").strip()
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5").strip()
+
+DEFAULT_ENGINE = os.getenv("ENGOLA_DEFAULT_ENGINE", "gemini").strip()
+
+# --- Tools ---
+BRAVE_SEARCH_API_KEY = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "").strip()
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "").strip()
+
+# --- Google (Gmail via OAuth loopback -- see integrations/google_oauth.py) ---
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET", "").strip()
+GOOGLE_SCOPES = [
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+]
+
+# --- Telegram (archive-only in v2: chat happens on the web UI, not here) ---
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
+ARCHIVE_CHAT_ID = os.getenv("ARCHIVE_CHAT_ID", "").strip()
+
+# Shell safety net (owner-ID equivalent here is "only your own browser can
+# reach this server" -- see README's network-exposure warning).
+DANGEROUS_PATTERNS = [
+    r"rm\s+-rf\s+/(\s|$)", r"mkfs", r":\(\)\s*\{.*:\|:.*\}", r"dd\s+if=",
+    r">\s*/dev/sd", r"shutdown", r"reboot", r"passwd\s", r"chmod\s+-R\s+777\s+/",
+]
+MAX_SHELL_TIMEOUT = int(os.getenv("ENGOLA_SHELL_TIMEOUT", "120"))
+HISTORY_TURNS = int(os.getenv("ENGOLA_HISTORY_TURNS", "16"))
+KNOWLEDGE_TOP_K = int(os.getenv("ENGOLA_KNOWLEDGE_TOP_K", "5"))
+
+SYSTEM_PROMPT = (
+    f"You are Engola, {OWNER_NAME}'s private personal assistant, running on his own "
+    f"device. Be direct, concise and useful -- no filler, no AI disclaimers unless "
+    f"relevant. If you don't know something current, say so rather than guessing. "
+    f"You have real tools on this device: web search, shell/device control, email, "
+    f"and a persistent memory of past conversations that gets retrieved and given to "
+    f"you as context below when relevant -- use it naturally, don't just repeat it back."
+)
+
+
+def require(name: str, value: str) -> None:
+    if not value:
+        raise SystemExit(f"Missing required env var: {name}. Copy .env.example to .env and fill it in.")

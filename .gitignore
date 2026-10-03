@@ -1,5 +1,9 @@
 .env
-data/
+*.env
+venv/
 __pycache__/
-*.pyc
-.venv/
+*.db
+*.sqlite
+token.json
+credentials.json
+client_secret*.json
