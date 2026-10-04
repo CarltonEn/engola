@@ -1,9 +1,7 @@
 .env
-*.env
-venv/
+data/
 __pycache__/
+*.pyc
 *.db
-*.sqlite
-token.json
-credentials.json
-client_secret*.json
+engola_dump*.txt
+engola-*.txt
